@@ -1,0 +1,145 @@
+- hosts: servers
+  remote_user: root
+  tasks:
+    - name: Ensure EPEL is enabled
+      yum:
+        name: epel-release
+        state: latest
+
+    - name: Install yum utils
+      yum:
+        name: yum-utils
+        state: latest
+
+    - name: Install device-mapper-persistent-data
+      yum:
+        name: device-mapper-persistent-data
+        state: latest
+
+    - name: Install lvm2
+      yum:
+        name: lvm2
+        state: latest
+        
+        
+    - name: FILEBEAT Install filebeat
+      get_url:
+        url: https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-7.7.0-x86_64.rpm
+        dest: /home/filebeat-7.7.0-x86_64.rpm
+      
+    - name: FILEBEAT Install filebeat p2
+      yum:
+        name: /home/filebeat-7.7.0-x86_64.rpm
+        state: present
+      
+    - name: FILEBEAT Copy filebeat config file
+      copy:
+        src: /var/jenkins_home/workspace/APIpipeline/filebeat.yml
+        dest: /etc/filebeat/filebeat.yml
+        
+    - name: FILEBEAT Enable system module
+      command: filebeat modules enable system
+        
+    #- name: FILEBEAT Load template
+    #  command: filebeat setup --dashboards --index-management # -E output.logstash.enabled=false -E 'output.elasticsearch.hosts=["192.168.0.174:9200"]'
+    #  ignore_errors: yes
+      
+    #- name: FILEBEAT Look at newest documents
+    #  command: curl -XDELETE 'http://192.168.0.174:9200/filebeat-*'
+      
+    #- name: FILEBEAT Setup dashboards
+    #  command: filebeat setup --dashboards
+    
+    - name: FILEBEAT Start filebeat
+      service:
+        name: filebeat
+        state: started
+        enabled: yes
+        
+
+    - name: DOCKER Add Docker repo
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docer-ce.repo
+      #become: yes
+
+    - name: DOCKER Install Docker
+      package:
+        name: docker
+        state: latest
+      #become: yes
+
+    - name: DOCKER Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      #become: yes
+      
+    - name: Install pip
+      yum:
+        name: python-pip
+        state: latest
+        
+    - name: Install docker-py
+      pip:
+        name: docker-py
+        state: latest
+        
+        
+    - name: Create APIpipeline directory
+      file:
+        path: /home/APIpipeline
+        state: directory
+
+    - name: Copy files to server
+      copy: 
+        src: /var/jenkins_home/workspace/APIpipeline/CloudApiScoutsleiding/CloudApiScoutsleiding/bin/Debug/netcoreapp3.1/publish/
+        dest: /home/APIpipeline
+
+    - name: Copy Dockerfile to server
+      copy:
+        src: /var/jenkins_home/workspace/APIpipeline/Dockerfile
+        dest: /home/APIpipeline
+           
+    - name: Delete previous container test
+      #command: docker rm apicontainer_test apicontainer_deploy
+      docker_container:
+        name: apicontainer_test
+        state: absent
+
+    - name: Delete previous container deploy
+      #command: docker rm apicontainer_test apicontainer_deploy
+      docker_container:
+        name: apicontainer_deploy
+        state: absent
+
+    - name: Remove Docker image
+      docker_image:
+        name: api-image
+        state: absent
+
+    - name: Create Docker image
+      #command: docker build -t api-image -f /home/APIpipeline/Dockerfile /home/APIpipeline
+      docker_image:
+        name: api-image
+        path: /home/APIpipeline
+        state: build
+      
+    - name: Create/run docker container test
+      #command: docker run -d --name apicontainer_test -p 8080:8082 api-image:latest
+      docker_container:
+        name: apicontainer_test
+        image: api-image:latest
+        ports:
+        - "8080:8082"
+        state: started
+        
+    - name: Create/run docker container deploy
+      #command: docker run -d --name apicontainer_test -p 8080:8082 api-image:latest
+      docker_container:
+        name: apicontainer_deploy
+        image: api-image:latest
+        ports:
+        - "8081:8082"
+        state: started
